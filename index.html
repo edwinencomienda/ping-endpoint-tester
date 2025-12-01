@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Endpoint Ping Tester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-success {
+            @apply bg-green-100 text-green-800 border-green-300;
+        }
+
+        .status-error {
+            @apply bg-red-100 text-red-800 border-red-300;
+        }
+
+        .status-warning {
+            @apply bg-yellow-100 text-yellow-800 border-yellow-300;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen py-8">
+    <div class="max-w-6xl mx-auto px-4">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Endpoint Ping Tester</h1>
+            <p class="text-gray-600">Monitor API endpoints with real-time request tracking</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label for="endpoint" class="block text-sm font-medium text-gray-700 mb-2">
+                        Endpoint URL
+                    </label>
+                    <input type="text" id="endpoint" placeholder="https://example.com/api/test"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+                <div>
+                    <label for="interval" class="block text-sm font-medium text-gray-700 mb-2">
+                        Interval (seconds)
+                    </label>
+                    <input type="number" id="interval" value="0.5" step="0.1" min="0.1"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+                <div class="flex items-end">
+                    <button id="toggleBtn" onclick="togglePolling()"
+                        class="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors font-medium">
+                        Start Polling
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200">
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-gray-800" id="totalRequests">0</div>
+                    <div class="text-sm text-gray-600">Total Requests</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-green-600" id="successCount">0</div>
+                    <div class="text-sm text-gray-600">Successful</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-red-600" id="errorCount">0</div>
+                    <div class="text-sm text-gray-600">Failed</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-blue-600" id="avgResponseTime">0</div>
+                    <div class="text-sm text-gray-600">Avg Response (ms)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Request List -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">Request History</h2>
+                <button onclick="clearHistory()"
+                    class="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-colors">
+                    Clear History
+                </button>
+            </div>
+            <div id="requestList" class="space-y-2 max-h-96 overflow-y-auto">
+                <div class="text-center text-gray-500 py-8">
+                    No requests yet. Start polling to see results.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pollingInterval = null;
+        let isPolling = false;
+        let requests = [];
+        let responseTimes = [];
+
+        // Load settings from localStorage on page load
+        function loadSettings() {
+            const savedEndpoint = localStorage.getItem('zeroDowntimeEndpoint');
+            const savedInterval = localStorage.getItem('zeroDowntimeInterval');
+
+            if (savedEndpoint) {
+                document.getElementById('endpoint').value = savedEndpoint;
+            }
+            if (savedInterval) {
+                document.getElementById('interval').value = savedInterval;
+            }
+        }
+
+        // Save settings to localStorage
+        function saveSettings() {
+            const endpoint = document.getElementById('endpoint').value.trim();
+            const interval = document.getElementById('interval').value;
+
+            if (endpoint) {
+                localStorage.setItem('zeroDowntimeEndpoint', endpoint);
+            }
+            if (interval) {
+                localStorage.setItem('zeroDowntimeInterval', interval);
+            }
+        }
+
+        // Load settings when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+        });
+
+        function togglePolling() {
+            const endpoint = document.getElementById('endpoint').value.trim();
+            const interval = parseFloat(document.getElementById('interval').value);
+            const toggleBtn = document.getElementById('toggleBtn');
+
+            if (!isPolling) {
+                // Start polling
+                if (!endpoint) {
+                    alert('Please enter an endpoint URL');
+                    return;
+                }
+
+                if (interval <= 0) {
+                    alert('Interval must be greater than 0');
+                    return;
+                }
+
+                // Save settings before starting
+                saveSettings();
+
+                isPolling = true;
+                toggleBtn.textContent = 'Stop Polling';
+                toggleBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                toggleBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+
+                document.getElementById('endpoint').disabled = true;
+                document.getElementById('interval').disabled = true;
+
+                // Start polling immediately
+                callAPI(endpoint);
+
+                // Then set interval
+                pollingInterval = setInterval(() => {
+                    callAPI(endpoint);
+                }, interval * 1000);
+            } else {
+                // Stop polling
+                isPolling = false;
+                toggleBtn.textContent = 'Start Polling';
+                toggleBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                toggleBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+
+                document.getElementById('endpoint').disabled = false;
+                document.getElementById('interval').disabled = false;
+
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+            }
+        }
+
+        async function callAPI(endpoint) {
+            const startTime = performance.now();
+            const timestamp = new Date().toLocaleString();
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+
+                const endTime = performance.now();
+                const responseTime = Math.round(endTime - startTime);
+                const statusCode = response.status;
+                const isSuccess = statusCode >= 200 && statusCode < 300;
+
+                const requestData = {
+                    timestamp,
+                    statusCode,
+                    responseTime,
+                    isSuccess,
+                    endpoint
+                };
+
+                requests.unshift(requestData);
+                if (isSuccess) {
+                    responseTimes.push(responseTime);
+                }
+
+                updateUI();
+            } catch (error) {
+                const endTime = performance.now();
+                const responseTime = Math.round(endTime - startTime);
+
+                const requestData = {
+                    timestamp,
+                    statusCode: 'Error',
+                    responseTime,
+                    isSuccess: false,
+                    endpoint,
+                    error: error.message
+                };
+
+                requests.unshift(requestData);
+                updateUI();
+            }
+        }
+
+        function updateUI() {
+            // Update request list
+            const requestList = document.getElementById('requestList');
+
+            if (requests.length === 0) {
+                requestList.innerHTML = '<div class="text-center text-gray-500 py-8">No requests yet. Start polling to see results.</div>';
+                return;
+            }
+
+            requestList.innerHTML = requests.map((req, index) => {
+                const statusClass = req.isSuccess ? 'status-success' : 'status-error';
+                const statusText = req.isSuccess ? 'Success' : 'Failed';
+                const iconColor = req.isSuccess ? 'text-green-600' : 'text-red-600';
+                const iconBg = req.isSuccess ? 'bg-green-200' : 'bg-red-200';
+
+                const checkIcon = `
+                    <svg class="w-6 h-6 ${iconColor}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                `;
+
+                const xIcon = `
+                    <svg class="w-6 h-6 ${iconColor}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                `;
+
+                return `
+                    <div class="border rounded-lg p-4 ${statusClass} transition-all hover:shadow-md">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                            <div class="flex items-center gap-3">
+                                <div class="${iconBg} rounded-full p-1.5 flex items-center justify-center">
+                                    ${req.isSuccess ? checkIcon : xIcon}
+                                </div>
+                                <div>
+                                    <div class="font-medium">${statusText} - ${req.statusCode}</div>
+                                    <div class="text-sm opacity-75">${req.timestamp}</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4 text-sm">
+                                <div>
+                                    <span class="font-medium">Response Time:</span>
+                                    <span class="ml-1 font-bold">${req.responseTime} ms</span>
+                                </div>
+                                <div class="text-xs opacity-75 truncate max-w-xs">
+                                    ${req.endpoint}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Update stats
+            const totalRequests = requests.length;
+            const successCount = requests.filter(r => r.isSuccess).length;
+            const errorCount = totalRequests - successCount;
+            const avgResponseTime = responseTimes.length > 0
+                ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+                : 0;
+
+            document.getElementById('totalRequests').textContent = totalRequests;
+            document.getElementById('successCount').textContent = successCount;
+            document.getElementById('errorCount').textContent = errorCount;
+            document.getElementById('avgResponseTime').textContent = avgResponseTime;
+        }
+
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all request history?')) {
+                requests = [];
+                responseTimes = [];
+                updateUI();
+            }
+        }
+
+        // Save settings when inputs change
+        document.getElementById('endpoint').addEventListener('input', () => {
+            if (!isPolling) {
+                saveSettings();
+            }
+        });
+
+        document.getElementById('interval').addEventListener('input', () => {
+            if (!isPolling) {
+                saveSettings();
+            }
+        });
+
+        // Allow Enter key to start/stop polling
+        document.getElementById('endpoint').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !isPolling) {
+                togglePolling();
+            }
+        });
+
+        document.getElementById('interval').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !isPolling) {
+                togglePolling();
+            }
+        });
+    </script>
+</body>
+
+</html>
