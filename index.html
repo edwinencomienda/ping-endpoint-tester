@@ -31,7 +31,7 @@
 
         <!-- Control Panel -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label for="endpoint" class="block text-sm font-medium text-gray-700 mb-2">
                         Endpoint URL
@@ -44,6 +44,13 @@
                         Interval (seconds)
                     </label>
                     <input type="number" id="interval" value="0.5" step="0.1" min="0.1"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+                <div>
+                    <label for="duration" class="block text-sm font-medium text-gray-700 mb-2">
+                        Duration (seconds)
+                    </label>
+                    <input type="number" id="duration" value="15" step="1" min="1"
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                 </div>
                 <div class="flex items-end">
@@ -94,6 +101,7 @@
 
     <script>
         let pollingInterval = null;
+        let durationTimeout = null;
         let isPolling = false;
         let requests = [];
         let responseTimes = [];
@@ -102,6 +110,7 @@
         function loadSettings() {
             const savedEndpoint = localStorage.getItem('zeroDowntimeEndpoint');
             const savedInterval = localStorage.getItem('zeroDowntimeInterval');
+            const savedDuration = localStorage.getItem('zeroDowntimeDuration');
 
             if (savedEndpoint) {
                 document.getElementById('endpoint').value = savedEndpoint;
@@ -109,18 +118,25 @@
             if (savedInterval) {
                 document.getElementById('interval').value = savedInterval;
             }
+            if (savedDuration) {
+                document.getElementById('duration').value = savedDuration;
+            }
         }
 
         // Save settings to localStorage
         function saveSettings() {
             const endpoint = document.getElementById('endpoint').value.trim();
             const interval = document.getElementById('interval').value;
+            const duration = document.getElementById('duration').value;
 
             if (endpoint) {
                 localStorage.setItem('zeroDowntimeEndpoint', endpoint);
             }
             if (interval) {
                 localStorage.setItem('zeroDowntimeInterval', interval);
+            }
+            if (duration) {
+                localStorage.setItem('zeroDowntimeDuration', duration);
             }
         }
 
@@ -132,6 +148,7 @@
         function togglePolling() {
             const endpoint = document.getElementById('endpoint').value.trim();
             const interval = parseFloat(document.getElementById('interval').value);
+            const duration = parseFloat(document.getElementById('duration').value);
             const toggleBtn = document.getElementById('toggleBtn');
 
             if (!isPolling) {
@@ -146,6 +163,11 @@
                     return;
                 }
 
+                if (duration <= 0) {
+                    alert('Duration must be greater than 0');
+                    return;
+                }
+
                 // Save settings before starting
                 saveSettings();
 
@@ -156,6 +178,7 @@
 
                 document.getElementById('endpoint').disabled = true;
                 document.getElementById('interval').disabled = true;
+                document.getElementById('duration').disabled = true;
 
                 // Start polling immediately
                 callAPI(endpoint);
@@ -164,6 +187,11 @@
                 pollingInterval = setInterval(() => {
                     callAPI(endpoint);
                 }, interval * 1000);
+
+                // Set duration timeout to stop polling automatically
+                durationTimeout = setTimeout(() => {
+                    togglePolling();
+                }, duration * 1000);
             } else {
                 // Stop polling
                 isPolling = false;
@@ -173,10 +201,15 @@
 
                 document.getElementById('endpoint').disabled = false;
                 document.getElementById('interval').disabled = false;
+                document.getElementById('duration').disabled = false;
 
                 if (pollingInterval) {
                     clearInterval(pollingInterval);
                     pollingInterval = null;
+                }
+                if (durationTimeout) {
+                    clearTimeout(durationTimeout);
+                    durationTimeout = null;
                 }
             }
         }
@@ -317,6 +350,12 @@
             }
         });
 
+        document.getElementById('duration').addEventListener('input', () => {
+            if (!isPolling) {
+                saveSettings();
+            }
+        });
+
         // Allow Enter key to start/stop polling
         document.getElementById('endpoint').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !isPolling) {
@@ -325,6 +364,12 @@
         });
 
         document.getElementById('interval').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !isPolling) {
+                togglePolling();
+            }
+        });
+
+        document.getElementById('duration').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !isPolling) {
                 togglePolling();
             }
