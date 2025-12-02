@@ -61,6 +61,18 @@
                 </div>
             </div>
 
+            <!-- Progress Bar -->
+            <div id="progressContainer" class="mt-4 hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-gray-700">Progress</span>
+                    <span id="progressText" class="text-sm text-gray-600">0s / 0s</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                        style="width: 0%"></div>
+                </div>
+            </div>
+
             <!-- Stats -->
             <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200">
                 <div class="text-center">
@@ -102,6 +114,8 @@
     <script>
         let pollingInterval = null;
         let durationTimeout = null;
+        let progressInterval = null;
+        let pollingStartTime = null;
         let isPolling = false;
         let requests = [];
         let responseTimes = [];
@@ -180,6 +194,10 @@
                 document.getElementById('interval').disabled = true;
                 document.getElementById('duration').disabled = true;
 
+                // Show progress bar
+                document.getElementById('progressContainer').classList.remove('hidden');
+                pollingStartTime = Date.now();
+
                 // Start polling immediately
                 callAPI(endpoint);
 
@@ -187,6 +205,11 @@
                 pollingInterval = setInterval(() => {
                     callAPI(endpoint);
                 }, interval * 1000);
+
+                // Update progress bar every 100ms for smooth animation
+                progressInterval = setInterval(() => {
+                    updateProgressBar(duration);
+                }, 100);
 
                 // Set duration timeout to stop polling automatically
                 durationTimeout = setTimeout(() => {
@@ -203,6 +226,10 @@
                 document.getElementById('interval').disabled = false;
                 document.getElementById('duration').disabled = false;
 
+                // Hide progress bar
+                document.getElementById('progressContainer').classList.add('hidden');
+                pollingStartTime = null;
+
                 if (pollingInterval) {
                     clearInterval(pollingInterval);
                     pollingInterval = null;
@@ -211,6 +238,14 @@
                     clearTimeout(durationTimeout);
                     durationTimeout = null;
                 }
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
+
+                // Reset progress bar
+                document.getElementById('progressBar').style.width = '0%';
+                document.getElementById('progressText').textContent = '0s / 0s';
             }
         }
 
@@ -327,6 +362,17 @@
             document.getElementById('successCount').textContent = successCount;
             document.getElementById('errorCount').textContent = errorCount;
             document.getElementById('avgResponseTime').textContent = avgResponseTime;
+        }
+
+        function updateProgressBar(duration) {
+            if (!pollingStartTime) return;
+
+            const elapsed = (Date.now() - pollingStartTime) / 1000; // elapsed time in seconds
+            const progress = Math.min((elapsed / duration) * 100, 100);
+            const remaining = Math.max(duration - elapsed, 0);
+
+            document.getElementById('progressBar').style.width = `${progress}%`;
+            document.getElementById('progressText').textContent = `${Math.round(elapsed)}s / ${duration}s`;
         }
 
         function clearHistory() {
