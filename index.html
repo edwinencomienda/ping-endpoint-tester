@@ -216,6 +216,7 @@
         let isPolling = false;
         let requests = [];
         let responseTimes = [];
+        let notificationPermission = null;
 
         // Load settings from localStorage on page load
         function loadSettings() {
@@ -311,10 +312,77 @@
             });
         }
 
-        // Load settings when page loads
-        window.addEventListener('DOMContentLoaded', () => {
+        // Notification management
+        async function requestNotificationPermission() {
+            // Check if browser supports notifications
+            if (!('Notification' in window)) {
+                console.log('This browser does not support desktop notifications');
+                return false;
+            }
+
+            // Check if permission was already granted or denied
+            if (Notification.permission === 'granted') {
+                notificationPermission = 'granted';
+                return true;
+            }
+
+            if (Notification.permission === 'denied') {
+                notificationPermission = 'denied';
+                return false;
+            }
+
+            // Check if user previously dismissed the request
+            const notificationDismissed = localStorage.getItem('notificationDismissed');
+            if (notificationDismissed === 'true') {
+                return false;
+            }
+
+            // Request permission
+            try {
+                const permission = await Notification.requestPermission();
+                notificationPermission = permission;
+
+                if (permission === 'granted') {
+                    localStorage.setItem('notificationEnabled', 'true');
+                    return true;
+                } else {
+                    localStorage.setItem('notificationDismissed', 'true');
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error requesting notification permission:', error);
+                return false;
+            }
+        }
+
+        function sendNotification(title, options = {}) {
+            if (!('Notification' in window)) {
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                const notification = new Notification(title, {
+                    icon: '/favicon.ico',
+                    badge: '/favicon.ico',
+                    ...options
+                });
+
+                // Auto-close notification after 5 seconds
+                setTimeout(() => {
+                    notification.close();
+                }, 5000);
+            }
+        }
+
+        // Request notification permission on page load
+        window.addEventListener('DOMContentLoaded', async () => {
             loadSettings();
             initTheme();
+
+            // Request notification permission after a short delay to let the page load
+            setTimeout(async () => {
+                await requestNotificationPermission();
+            }, 1000);
         });
 
         function togglePolling() {
@@ -372,6 +440,16 @@
                 // Set duration timeout to stop polling automatically
                 durationTimeout = setTimeout(() => {
                     togglePolling();
+                    // Send notification when polling finishes automatically
+                    if (Notification.permission === 'granted') {
+                        const totalRequests = requests.length;
+                        const successCount = requests.filter(r => r.isSuccess).length;
+                        const errorCount = totalRequests - successCount;
+                        sendNotification('Polling Completed', {
+                            body: `Total: ${totalRequests} requests | Success: ${successCount} | Failed: ${errorCount}`,
+                            tag: 'polling-complete'
+                        });
+                    }
                 }, duration * 1000);
             } else {
                 // Stop polling
@@ -404,6 +482,17 @@
                 // Reset progress bar
                 document.getElementById('progressBar').style.width = '0%';
                 document.getElementById('progressText').textContent = '0s / 0s';
+
+                // Send notification when polling is manually stopped (only if there were requests)
+                if (requests.length > 0 && Notification.permission === 'granted') {
+                    const totalRequests = requests.length;
+                    const successCount = requests.filter(r => r.isSuccess).length;
+                    const errorCount = totalRequests - successCount;
+                    sendNotification('Polling Stopped', {
+                        body: `Total: ${totalRequests} requests | Success: ${successCount} | Failed: ${errorCount}`,
+                        tag: 'polling-stopped'
+                    });
+                }
             }
         }
 
